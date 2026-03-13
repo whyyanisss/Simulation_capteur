@@ -26,10 +26,7 @@
         .canvas-container {
             position: relative;
             background-color: #050505;
-            background-image: 
-                linear-gradient(rgba(0, 255, 0, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 255, 0, 0.05) 1px, transparent 1px);
-            background-size: 50px 50px;
+            /* La grille CSS a été retirée pour ne pas interférer avec la grille de l'oscilloscope */
         }
     </style>
 </head>
@@ -128,6 +125,41 @@
                 </div>
             </div>
 
+            <hr class="border-gray-700">
+
+            <!-- Section Oscilloscope -->
+            <div>
+                <h2 class="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i data-lucide="monitor" class="w-4 h-4"></i> Oscilloscope
+                </h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>Base de temps</label>
+                            <span id="val-timebase-input" class="text-gray-400 font-mono">Auto</span>
+                        </div>
+                        <input type="range" id="timebase-slider" min="0" max="11" value="0" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>CH1 (I Entrée)</label>
+                            <span id="val-scale-ch1-input" class="text-blue-400 font-mono">Auto</span>
+                        </div>
+                        <input type="range" id="scale-ch1-slider" min="0" max="6" value="0" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>CH2 (V Sortie)</label>
+                            <span id="val-scale-ch2-input" class="text-red-400 font-mono">Auto</span>
+                        </div>
+                        <input type="range" id="scale-ch2-slider" min="0" max="8" value="0" class="w-full">
+                    </div>
+                </div>
+            </div>
+
         </div>
     </aside>
 
@@ -210,10 +242,22 @@
             size: 0.03,      // Metres
             turns: 100,      // Entier
             isPaused: false,
-            timeOffset: 0    // Pour l'animation
+            timeOffset: 0,   // Pour l'animation
+            timebaseIdx: 0,
+            ch1Idx: 0,
+            ch2Idx: 0
         };
 
         const MU_0 = 4 * Math.PI * 1e-7;
+
+        const TIMEBASE_VALS = [0, 1e-6, 2e-6, 5e-6, 1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3];
+        const TIMEBASE_LABELS = ['Auto', '1 µs', '2 µs', '5 µs', '10 µs', '20 µs', '50 µs', '100 µs', '200 µs', '500 µs', '1 ms', '2 ms'];
+
+        const CH1_VALS = [0, 0.1, 0.2, 0.5, 1, 2, 5];
+        const CH1_LABELS = ['Auto', '0.1 A', '0.2 A', '0.5 A', '1 A', '2 A', '5 A'];
+
+        const CH2_VALS = [0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10];
+        const CH2_LABELS = ['Auto', '1 µV', '10 µV', '100 µV', '1 mV', '10 mV', '100 mV', '1 V', '10 V'];
 
         // Éléments UI
         const inputs = {
@@ -224,6 +268,9 @@
             dist: document.getElementById('dist'),
             size: document.getElementById('size'),
             turns: document.getElementById('turns'),
+            timebase: document.getElementById('timebase-slider'),
+            ch1: document.getElementById('scale-ch1-slider'),
+            ch2: document.getElementById('scale-ch2-slider'),
         };
 
         const vals = {
@@ -234,6 +281,9 @@
             dist: document.getElementById('val-dist'),
             size: document.getElementById('val-size'),
             turns: document.getElementById('val-turns'),
+            timebase: document.getElementById('val-timebase-input'),
+            ch1: document.getElementById('val-scale-ch1-input'),
+            ch2: document.getElementById('val-scale-ch2-input'),
         };
 
         const shapeBtns = document.querySelectorAll('.shape-btn');
@@ -250,6 +300,9 @@
             state.distance = parseFloat(inputs.dist.value) / 100;
             state.size = parseFloat(inputs.size.value) / 100;
             state.turns = parseInt(inputs.turns.value);
+            state.timebaseIdx = parseInt(inputs.timebase.value);
+            state.ch1Idx = parseInt(inputs.ch1.value);
+            state.ch2Idx = parseInt(inputs.ch2.value);
 
             vals.fc.textContent = `${inputs.fc.value} kHz`;
             vals.fm.textContent = `${inputs.fm.value} kHz`;
@@ -258,6 +311,9 @@
             vals.dist.textContent = `${inputs.dist.value} cm`;
             vals.size.textContent = `${inputs.size.value} cm`;
             vals.turns.textContent = state.turns;
+            vals.timebase.textContent = TIMEBASE_LABELS[state.timebaseIdx];
+            vals.ch1.textContent = CH1_LABELS[state.ch1Idx];
+            vals.ch2.textContent = CH2_LABELS[state.ch2Idx];
 
             update3DScene();
             recalculatePhysics();
@@ -298,9 +354,7 @@
                     content.classList.add('hidden');
                     if(content.id === targetId) {
                         content.classList.remove('hidden');
-                        if (targetId === 'view-scope') {
-                            resizeCanvases();
-                        } else if (targetId === 'view-3d' && renderer) {
+                        if (targetId === 'view-3d' && renderer) {
                             resize3D();
                         }
                     }
@@ -322,7 +376,8 @@
         // MOTEUR PHYSIQUE & CALCULS ONDES
         // ----------------------------------------------------
         
-        let waveforms = { time: [], current: [], voltage: [] };
+        const NUM_POINTS = 4000; // Résolution d'affichage plus haute
+        let waveforms = { time: null, current: null, voltage: null };
         let physics = { M: 0, V_peak: 0 };
 
         function calculateMutualInductance() {
@@ -333,10 +388,7 @@
             } else {
                 area = state.size * state.size;
             }
-            // Approximation : le champ B est uniforme sur la surface de la bobine
-            // B(h) = (µ0 * I) / (2 * PI * h)
-            // Phi = B * Area * N
-            // M = (µ0 * Area * N) / (2 * PI * h)
+            // Approximation
             return (MU_0 * area * state.turns) / (2 * Math.PI * state.distance);
         }
 
@@ -361,26 +413,40 @@
         }
 
         function generateWaveforms() {
-            // Afficher exactement 3 périodes de modulation
+            // Optimisation mémoire : initialiser les tableaux 1 seule fois
+            if (!waveforms.time) {
+                waveforms.time = new Float32Array(NUM_POINTS);
+                waveforms.current = new Float32Array(NUM_POINTS);
+                waveforms.voltage = new Float32Array(NUM_POINTS);
+            }
+
             const modPeriod = 1 / state.fm;
-            const windowTime = 3 * modPeriod;
-            const numPoints = 2000; // Résolution d'affichage
-            const dt = windowTime / (numPoints - 1);
+            let windowTime;
+            let timePerDiv;
+
+            if (state.timebaseIdx === 0) {
+                // Afficher exactement 3 périodes de modulation en mode Auto
+                windowTime = 3 * modPeriod;
+                timePerDiv = windowTime / 10;
+                document.getElementById('timebase').textContent = "Auto (~" + formatTime(timePerDiv) + ")";
+            } else {
+                timePerDiv = TIMEBASE_VALS[state.timebaseIdx];
+                windowTime = timePerDiv * 10;
+                document.getElementById('timebase').textContent = TIMEBASE_LABELS[state.timebaseIdx] + " / div";
+            }
+
+            const dt = windowTime / (NUM_POINTS - 1);
             
             // Temps de montée de l'horloge (5% de la période) pour l'amortissement de la dérivée
             const tr = 0.05 * modPeriod;
-
-            waveforms.time = new Float32Array(numPoints);
-            waveforms.current = new Float32Array(numPoints);
-            waveforms.voltage = new Float32Array(numPoints);
 
             let maxV = 0;
             let offset = state.isPaused ? 0 : state.timeOffset;
 
             // Phase 1 : Générer le courant
-            for (let i = 0; i < numPoints; i++) {
+            for (let i = 0; i < NUM_POINTS; i++) {
                 const t = i * dt + offset;
-                waveforms.time[i] = i * dt; // Temps relatif pour le graphe
+                waveforms.time[i] = i * dt; 
                 
                 const clock = getClockTrapezoid(t, modPeriod, state.duty, tr);
                 const carrier = Math.sin(2 * Math.PI * state.fc * t);
@@ -389,11 +455,11 @@
             }
 
             // Phase 2 : Dériver pour la tension (V = - M * dI/dt)
-            for (let i = 0; i < numPoints; i++) {
+            for (let i = 0; i < NUM_POINTS; i++) {
                 let dIdt = 0;
                 if (i === 0) {
                     dIdt = (waveforms.current[1] - waveforms.current[0]) / dt;
-                } else if (i === numPoints - 1) {
+                } else if (i === NUM_POINTS - 1) {
                     dIdt = (waveforms.current[i] - waveforms.current[i-1]) / dt;
                 } else {
                     // Différence centrale pour plus de précision
@@ -406,10 +472,6 @@
             }
 
             physics.V_peak = maxV;
-
-            // Base de temps UI (1 div = windowTime / 10)
-            const timePerDiv = windowTime / 10;
-            document.getElementById('timebase').textContent = (timePerDiv * 1000).toFixed(2) + " ms";
         }
 
         // ----------------------------------------------------
@@ -421,20 +483,8 @@
         const canvasOut = document.getElementById('canvas-scope-out');
         const ctxOut = canvasOut.getContext('2d');
 
-        function resizeCanvases() {
-            const containerIn = canvasIn.parentElement;
-            canvasIn.width = containerIn.clientWidth;
-            canvasIn.height = containerIn.clientHeight;
-            
-            const containerOut = canvasOut.parentElement;
-            canvasOut.width = containerOut.clientWidth;
-            canvasOut.height = containerOut.clientHeight;
-        }
-
+        // Gérer le redimensionnement lors de changements sur la fenêtre
         window.addEventListener('resize', () => {
-            if (!document.getElementById('view-scope').classList.contains('hidden')) {
-                resizeCanvases();
-            }
             if (!document.getElementById('view-3d').classList.contains('hidden') && renderer) {
                 resize3D();
             }
@@ -465,6 +515,12 @@
             ctx.stroke();
         }
 
+        function formatTime(s) {
+            if (s >= 1e-3) return (s * 1e3).toFixed(2) + " ms";
+            if (s >= 1e-6) return (s * 1e6).toFixed(2) + " µs";
+            return (s * 1e9).toFixed(2) + " ns";
+        }
+
         function formatVoltage(v) {
             if (v >= 1) return v.toFixed(2) + " V";
             if (v >= 1e-3) return (v * 1e3).toFixed(2) + " mV";
@@ -475,30 +531,46 @@
         function drawScope() {
             if (document.getElementById('view-scope').classList.contains('hidden')) return;
 
-            generateWaveforms();
+            // CORRECTION BUG : Redimensionnement dynamique pour s'assurer
+            // que le canvas n'est jamais figé à 0x0 après l'affichage de l'onglet caché.
+            const parentIn = canvasIn.parentElement;
+            if (canvasIn.width !== parentIn.clientWidth) canvasIn.width = parentIn.clientWidth;
+            if (canvasIn.height !== parentIn.clientHeight) canvasIn.height = parentIn.clientHeight;
+            
+            const parentOut = canvasOut.parentElement;
+            if (canvasOut.width !== parentOut.clientWidth) canvasOut.width = parentOut.clientWidth;
+            if (canvasOut.height !== parentOut.clientHeight) canvasOut.height = parentOut.clientHeight;
 
             const wIn = canvasIn.width;
             const hIn = canvasIn.height;
             const wOut = canvasOut.width;
             const hOut = canvasOut.height;
 
+            // Sécurité : si le conteneur n'a pas encore de taille (layout flexbox en cours)
+            if (wIn === 0 || hIn === 0) return;
+
+            generateWaveforms();
+
             drawGraticule(ctxIn, wIn, hIn);
             drawGraticule(ctxOut, wOut, hOut);
 
-            const numPoints = waveforms.time.length;
-
             // --- Canal 1 : Courant ---
-            // Échelle: max amplitude * 1.2 pour marge
-            const scaleI = state.amp * 1.5; 
-            document.getElementById('scope-in-scale').textContent = `${(scaleI / 4).toFixed(2)} A / div`;
+            let scaleI;
+            if (state.ch1Idx === 0) {
+                scaleI = state.amp * 1.5; // Mode Auto
+                document.getElementById('scope-in-scale').textContent = `Auto (~${(scaleI / 4).toFixed(2)} A/div)`;
+            } else {
+                scaleI = CH1_VALS[state.ch1Idx] * 4; // 4 divisions du centre vers le bord
+                document.getElementById('scope-in-scale').textContent = CH1_LABELS[state.ch1Idx] + "/div";
+            }
 
             ctxIn.beginPath();
             ctxIn.strokeStyle = '#60a5fa'; // Blue-400
             ctxIn.lineWidth = 2;
             ctxIn.lineJoin = 'round';
 
-            for (let i = 0; i < numPoints; i++) {
-                const x = (i / (numPoints - 1)) * wIn;
+            for (let i = 0; i < NUM_POINTS; i++) {
+                const x = (i / (NUM_POINTS - 1)) * wIn;
                 // Centré, Y inversé
                 const y = hIn/2 - (waveforms.current[i] / scaleI) * (hIn/2);
                 if (i === 0) ctxIn.moveTo(x, y);
@@ -507,19 +579,23 @@
             ctxIn.stroke();
 
             // --- Canal 2 : Tension ---
-            // Échelle dynamique basée sur la crête
-            let scaleV = physics.V_peak * 1.5;
-            if (scaleV === 0) scaleV = 1;
-            
-            document.getElementById('scope-out-scale').textContent = `${formatVoltage(scaleV / 4)} / div`;
+            let scaleV;
+            if (state.ch2Idx === 0) {
+                scaleV = physics.V_peak * 1.5; // Mode Auto
+                if (scaleV === 0) scaleV = 1;
+                document.getElementById('scope-out-scale').textContent = `Auto (~${formatVoltage(scaleV / 4)}/div)`;
+            } else {
+                scaleV = CH2_VALS[state.ch2Idx] * 4; // 4 divisions
+                document.getElementById('scope-out-scale').textContent = CH2_LABELS[state.ch2Idx] + "/div";
+            }
 
             ctxOut.beginPath();
             ctxOut.strokeStyle = '#f87171'; // Red-400
             ctxOut.lineWidth = 2;
             ctxOut.lineJoin = 'round';
 
-            for (let i = 0; i < numPoints; i++) {
-                const x = (i / (numPoints - 1)) * wOut;
+            for (let i = 0; i < NUM_POINTS; i++) {
+                const x = (i / (NUM_POINTS - 1)) * wOut;
                 const y = hOut/2 - (waveforms.voltage[i] / scaleV) * (hOut/2);
                 if (i === 0) ctxOut.moveTo(x, y);
                 else ctxOut.lineTo(x, y);
@@ -661,7 +737,8 @@
 
             if (!state.isPaused) {
                 // Avancer le temps pour l'animation des ondes
-                state.timeOffset += 1e-5; 
+                // Un peu plus rapide pour bien voir la modulation avancer
+                state.timeOffset += 5e-5; 
             }
 
             // Mettre à jour la 3D
@@ -685,7 +762,6 @@
         // Démarrage
         updateStateFromUI();
         init3D();
-        resizeCanvases();
         animate();
 
     </script>
