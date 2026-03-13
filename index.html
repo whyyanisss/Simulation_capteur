@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulateur de Détection Magnétique</title>
+    <!-- Tailwind CSS pour le style -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js pour la 3D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Custom scrollbar pour le panneau de contrôle */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        
+        input[type=range] {
+            accent-color: #3b82f6;
+        }
+
+        .canvas-container {
+            position: relative;
+            background-color: #050505;
+            background-image: 
+                linear-gradient(rgba(0, 255, 0, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 0, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white h-screen flex overflow-hidden font-sans">
+
+    <!-- Panneau latéral : Paramètres -->
+    <aside class="w-80 bg-gray-800 border-r border-gray-700 flex flex-col h-full shadow-xl z-10">
+        <div class="p-4 bg-gray-900 border-b border-gray-700 flex items-center gap-3">
+            <i data-lucide="radio" class="text-blue-400"></i>
+            <h1 class="font-bold text-lg tracking-wide">Simulateur Induction</h1>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-5 space-y-6">
+            
+            <!-- Section Signal d'Entrée -->
+            <div>
+                <h2 class="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i data-lucide="activity" class="w-4 h-4"></i> Signal d'Entrée
+                </h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>Porteuse ($f_c$)</label>
+                            <span id="val-fc" class="text-gray-400 font-mono">100 kHz</span>
+                        </div>
+                        <input type="range" id="fc" min="10" max="500" value="100" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>Horloge Mod. ($f_m$)</label>
+                            <span id="val-fm" class="text-gray-400 font-mono">5 kHz</span>
+                        </div>
+                        <input type="range" id="fm" min="1" max="50" value="5" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>Rapport Cyclique</label>
+                            <span id="val-duty" class="text-gray-400 font-mono">50 %</span>
+                        </div>
+                        <input type="range" id="duty" min="10" max="90" value="50" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>Amplitude ($I_{max}$)</label>
+                            <span id="val-amp" class="text-gray-400 font-mono">1.0 A</span>
+                        </div>
+                        <input type="range" id="amp" min="0.1" max="5" step="0.1" value="1" class="w-full">
+                    </div>
+                </div>
+            </div>
+
+            <hr class="border-gray-700">
+
+            <!-- Section Physique & Bobine -->
+            <div>
+                <h2 class="text-sm font-semibold text-green-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i data-lucide="cpu" class="w-4 h-4"></i> Bobine & Géométrie
+                </h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>Distance ($h$)</label>
+                            <span id="val-dist" class="text-gray-400 font-mono">2.0 cm</span>
+                        </div>
+                        <input type="range" id="dist" min="0.5" max="15" step="0.1" value="2" class="w-full">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm mb-2">Forme de la bobine</label>
+                        <div class="flex gap-2">
+                            <button class="shape-btn flex-1 py-1.5 px-3 bg-blue-600 rounded text-sm font-medium transition-colors" data-shape="square">Carré</button>
+                            <button class="shape-btn flex-1 py-1.5 px-3 bg-gray-700 hover:bg-gray-600 rounded text-sm font-medium transition-colors" data-shape="circle">Cercle</button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>Taille / Diamètre</label>
+                            <span id="val-size" class="text-gray-400 font-mono">3.0 cm</span>
+                        </div>
+                        <input type="range" id="size" min="0.5" max="10" step="0.1" value="3" class="w-full">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <label>Nombre de spires ($N$)</label>
+                            <span id="val-turns" class="text-gray-400 font-mono">100</span>
+                        </div>
+                        <input type="range" id="turns" min="10" max="500" step="10" value="100" class="w-full">
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </aside>
+
+    <!-- Zone Principale -->
+    <main class="flex-1 flex flex-col relative bg-gray-950">
+        
+        <!-- Onglets -->
+        <div class="flex bg-gray-800 border-b border-gray-700">
+            <button class="tab-btn active px-6 py-3 flex items-center gap-2 text-sm font-medium border-b-2 border-blue-500 text-blue-400 bg-gray-900" data-target="view-3d">
+                <i data-lucide="box" class="w-4 h-4"></i> Vue 3D
+            </button>
+            <button class="tab-btn px-6 py-3 flex items-center gap-2 text-sm font-medium border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors" data-target="view-scope">
+                <i data-lucide="waves" class="w-4 h-4"></i> Waveforms (Signaux)
+            </button>
+        </div>
+
+        <!-- Contenu Vue 3D -->
+        <div id="view-3d" class="tab-content flex-1 relative w-full h-full">
+            <div id="canvas-3d" class="absolute inset-0"></div>
+            <!-- Overlay Info 3D -->
+            <div class="absolute top-4 left-4 bg-gray-900/80 p-3 rounded-lg border border-gray-700 backdrop-blur-sm pointer-events-none">
+                <p class="text-sm text-gray-300"><span class="w-3 h-3 inline-block bg-orange-500 rounded-full mr-1"></span> Fil de cuivre (Emetteur)</p>
+                <p class="text-sm text-gray-300 mt-1"><span class="w-3 h-3 inline-block bg-yellow-400 rounded-full mr-1"></span> Bobine (Récepteur)</p>
+                <p class="text-xs text-gray-500 mt-2">Tournez avec clic gauche. Zoomez avec la molette.</p>
+            </div>
+        </div>
+
+        <!-- Contenu Oscilloscope -->
+        <div id="view-scope" class="tab-content flex-1 hidden flex-col p-4 gap-4 overflow-hidden bg-gray-900">
+            
+            <!-- Canal 1: Entrée -->
+            <div class="flex-1 relative border border-gray-700 rounded-lg overflow-hidden flex flex-col bg-black">
+                <div class="absolute top-2 left-2 z-10 bg-gray-900/90 px-3 py-1.5 rounded border border-blue-900/50 flex items-center gap-3">
+                    <span class="font-bold text-blue-400">CH1 : Entrée</span>
+                    <span class="text-xs text-gray-400">Courant I(t) dans la ligne</span>
+                    <span id="scope-in-scale" class="text-xs font-mono bg-blue-950/50 px-2 py-0.5 rounded text-blue-300 border border-blue-800/50"></span>
+                </div>
+                <canvas id="canvas-scope-in" class="w-full h-full canvas-container flex-1"></canvas>
+            </div>
+
+            <!-- Canal 2: Sortie -->
+            <div class="flex-1 relative border border-gray-700 rounded-lg overflow-hidden flex flex-col bg-black">
+                <div class="absolute top-2 left-2 z-10 bg-gray-900/90 px-3 py-1.5 rounded border border-red-900/50 flex items-center gap-3">
+                    <span class="font-bold text-red-500">CH2 : Sortie</span>
+                    <span class="text-xs text-gray-400">Tension induite V(t) aux bornes</span>
+                    <span id="scope-out-scale" class="text-xs font-mono bg-red-950/50 px-2 py-0.5 rounded text-red-300 border border-red-800/50"></span>
+                </div>
+                <canvas id="canvas-scope-out" class="w-full h-full canvas-container flex-1"></canvas>
+            </div>
+
+            <!-- Contrôles Oscilloscope -->
+            <div class="h-12 bg-gray-800 rounded-lg border border-gray-700 flex items-center px-4 justify-between">
+                <div class="flex items-center gap-4 text-sm">
+                    <span class="text-gray-400">Base de temps : <span id="timebase" class="text-white font-mono">--</span> / div</span>
+                    <span class="text-gray-400">Inductance Mutuelle estimée : <span id="mutual-inductance" class="text-green-400 font-mono">--</span></span>
+                </div>
+                <button id="btn-pause" class="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm transition-colors flex items-center gap-2">
+                    <i data-lucide="pause" class="w-4 h-4"></i> Figer l'affichage
+                </button>
+            </div>
+
+        </div>
+
+    </main>
+
+    <script>
+        // Initialiser les icônes
+        lucide.createIcons();
+
+        // ----------------------------------------------------
+        // ETAT GLOBAL & PARAMETRES
+        // ----------------------------------------------------
+        const state = {
+            fc: 100000,      // Hz (Porteuse)
+            fm: 5000,        // Hz (Modulation)
+            duty: 0.5,       // Ratio (0.1 - 0.9)
+            amp: 1.0,        // Amperes
+            distance: 0.02,  // Metres
+            shape: 'square', // 'square' ou 'circle'
+            size: 0.03,      // Metres
+            turns: 100,      // Entier
+            isPaused: false,
+            timeOffset: 0    // Pour l'animation
+        };
+
+        const MU_0 = 4 * Math.PI * 1e-7;
+
+        // Éléments UI
+        const inputs = {
+            fc: document.getElementById('fc'),
+            fm: document.getElementById('fm'),
+            duty: document.getElementById('duty'),
+            amp: document.getElementById('amp'),
+            dist: document.getElementById('dist'),
+            size: document.getElementById('size'),
+            turns: document.getElementById('turns'),
+        };
+
+        const vals = {
+            fc: document.getElementById('val-fc'),
+            fm: document.getElementById('val-fm'),
+            duty: document.getElementById('val-duty'),
+            amp: document.getElementById('val-amp'),
+            dist: document.getElementById('val-dist'),
+            size: document.getElementById('val-size'),
+            turns: document.getElementById('val-turns'),
+        };
+
+        const shapeBtns = document.querySelectorAll('.shape-btn');
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+        const btnPause = document.getElementById('btn-pause');
+
+        // Mettre à jour l'état depuis l'UI
+        function updateStateFromUI() {
+            state.fc = parseFloat(inputs.fc.value) * 1000;
+            state.fm = parseFloat(inputs.fm.value) * 1000;
+            state.duty = parseFloat(inputs.duty.value) / 100;
+            state.amp = parseFloat(inputs.amp.value);
+            state.distance = parseFloat(inputs.dist.value) / 100;
+            state.size = parseFloat(inputs.size.value) / 100;
+            state.turns = parseInt(inputs.turns.value);
+
+            vals.fc.textContent = `${inputs.fc.value} kHz`;
+            vals.fm.textContent = `${inputs.fm.value} kHz`;
+            vals.duty.textContent = `${inputs.duty.value} %`;
+            vals.amp.textContent = `${inputs.amp.value} A`;
+            vals.dist.textContent = `${inputs.dist.value} cm`;
+            vals.size.textContent = `${inputs.size.value} cm`;
+            vals.turns.textContent = state.turns;
+
+            update3DScene();
+            recalculatePhysics();
+        }
+
+        // Écouteurs d'événements pour les sliders
+        Object.values(inputs).forEach(input => {
+            input.addEventListener('input', updateStateFromUI);
+        });
+
+        // Boutons de forme
+        shapeBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                shapeBtns.forEach(b => {
+                    b.classList.remove('bg-blue-600');
+                    b.classList.add('bg-gray-700', 'text-gray-200');
+                });
+                e.target.classList.remove('bg-gray-700', 'text-gray-200');
+                e.target.classList.add('bg-blue-600', 'text-white');
+                state.shape = e.target.dataset.shape;
+                updateStateFromUI();
+            });
+        });
+
+        // Gestion des onglets
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                tabBtns.forEach(b => {
+                    b.classList.remove('active', 'border-blue-500', 'text-blue-400', 'bg-gray-900');
+                    b.classList.add('border-transparent', 'text-gray-400');
+                });
+                const currentBtn = e.currentTarget;
+                currentBtn.classList.remove('border-transparent', 'text-gray-400');
+                currentBtn.classList.add('active', 'border-blue-500', 'text-blue-400', 'bg-gray-900');
+
+                const targetId = currentBtn.dataset.target;
+                tabContents.forEach(content => {
+                    content.classList.add('hidden');
+                    if(content.id === targetId) {
+                        content.classList.remove('hidden');
+                        if (targetId === 'view-scope') {
+                            resizeCanvases();
+                        } else if (targetId === 'view-3d' && renderer) {
+                            resize3D();
+                        }
+                    }
+                });
+            });
+        });
+
+        // Pause / Play
+        btnPause.addEventListener('click', () => {
+            state.isPaused = !state.isPaused;
+            btnPause.innerHTML = state.isPaused ? 
+                '<i data-lucide="play" class="w-4 h-4"></i> Reprendre' : 
+                '<i data-lucide="pause" class="w-4 h-4"></i> Figer l\'affichage';
+            lucide.createIcons();
+        });
+
+
+        // ----------------------------------------------------
+        // MOTEUR PHYSIQUE & CALCULS ONDES
+        // ----------------------------------------------------
+        
+        let waveforms = { time: [], current: [], voltage: [] };
+        let physics = { M: 0, V_peak: 0 };
+
+        function calculateMutualInductance() {
+            let area = 0;
+            if (state.shape === 'circle') {
+                const r = state.size / 2;
+                area = Math.PI * r * r;
+            } else {
+                area = state.size * state.size;
+            }
+            // Approximation : le champ B est uniforme sur la surface de la bobine
+            // B(h) = (µ0 * I) / (2 * PI * h)
+            // Phi = B * Area * N
+            // M = (µ0 * Area * N) / (2 * PI * h)
+            return (MU_0 * area * state.turns) / (2 * Math.PI * state.distance);
+        }
+
+        // Génère un signal d'horloge trapézoïdal pour éviter une dérivée infinie
+        function getClockTrapezoid(t, period, duty, tr) {
+            const t_mod = t % period;
+            const t_high = period * duty;
+            
+            if (t_mod < tr) return t_mod / tr;
+            if (t_mod < t_high) return 1.0;
+            if (t_mod < t_high + tr) return 1.0 - ((t_mod - t_high) / tr);
+            return 0.0;
+        }
+
+        function recalculatePhysics() {
+            physics.M = calculateMutualInductance();
+            
+            // Format d'affichage Mutuelle
+            let m_str = (physics.M * 1e9).toFixed(2) + " nH";
+            if (physics.M > 1e-6) m_str = (physics.M * 1e6).toFixed(2) + " µH";
+            document.getElementById('mutual-inductance').textContent = m_str;
+        }
+
+        function generateWaveforms() {
+            // Afficher exactement 3 périodes de modulation
+            const modPeriod = 1 / state.fm;
+            const windowTime = 3 * modPeriod;
+            const numPoints = 2000; // Résolution d'affichage
+            const dt = windowTime / (numPoints - 1);
+            
+            // Temps de montée de l'horloge (5% de la période) pour l'amortissement de la dérivée
+            const tr = 0.05 * modPeriod;
+
+            waveforms.time = new Float32Array(numPoints);
+            waveforms.current = new Float32Array(numPoints);
+            waveforms.voltage = new Float32Array(numPoints);
+
+            let maxV = 0;
+            let offset = state.isPaused ? 0 : state.timeOffset;
+
+            // Phase 1 : Générer le courant
+            for (let i = 0; i < numPoints; i++) {
+                const t = i * dt + offset;
+                waveforms.time[i] = i * dt; // Temps relatif pour le graphe
+                
+                const clock = getClockTrapezoid(t, modPeriod, state.duty, tr);
+                const carrier = Math.sin(2 * Math.PI * state.fc * t);
+                
+                waveforms.current[i] = state.amp * carrier * clock;
+            }
+
+            // Phase 2 : Dériver pour la tension (V = - M * dI/dt)
+            for (let i = 0; i < numPoints; i++) {
+                let dIdt = 0;
+                if (i === 0) {
+                    dIdt = (waveforms.current[1] - waveforms.current[0]) / dt;
+                } else if (i === numPoints - 1) {
+                    dIdt = (waveforms.current[i] - waveforms.current[i-1]) / dt;
+                } else {
+                    // Différence centrale pour plus de précision
+                    dIdt = (waveforms.current[i+1] - waveforms.current[i-1]) / (2 * dt);
+                }
+                
+                const v = -physics.M * dIdt;
+                waveforms.voltage[i] = v;
+                if (Math.abs(v) > maxV) maxV = Math.abs(v);
+            }
+
+            physics.V_peak = maxV;
+
+            // Base de temps UI (1 div = windowTime / 10)
+            const timePerDiv = windowTime / 10;
+            document.getElementById('timebase').textContent = (timePerDiv * 1000).toFixed(2) + " ms";
+        }
+
+        // ----------------------------------------------------
+        // RENDERER OSCILLOSCOPE (CANVAS 2D)
+        // ----------------------------------------------------
+        
+        const canvasIn = document.getElementById('canvas-scope-in');
+        const ctxIn = canvasIn.getContext('2d');
+        const canvasOut = document.getElementById('canvas-scope-out');
+        const ctxOut = canvasOut.getContext('2d');
+
+        function resizeCanvases() {
+            const containerIn = canvasIn.parentElement;
+            canvasIn.width = containerIn.clientWidth;
+            canvasIn.height = containerIn.clientHeight;
+            
+            const containerOut = canvasOut.parentElement;
+            canvasOut.width = containerOut.clientWidth;
+            canvasOut.height = containerOut.clientHeight;
+        }
+
+        window.addEventListener('resize', () => {
+            if (!document.getElementById('view-scope').classList.contains('hidden')) {
+                resizeCanvases();
+            }
+            if (!document.getElementById('view-3d').classList.contains('hidden') && renderer) {
+                resize3D();
+            }
+        });
+
+        function drawGraticule(ctx, width, height) {
+            ctx.clearRect(0, 0, width, height);
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+
+            // Ligne centrale horizontale
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+
+            // Quadrillage : 10 divisions horizontales, 8 verticales
+            const hDivs = 10;
+            const vDivs = 8;
+            
+            for(let i = 1; i < hDivs; i++) {
+                let x = (width / hDivs) * i;
+                ctx.moveTo(x, 0); ctx.lineTo(x, height);
+            }
+            for(let i = 1; i < vDivs; i++) {
+                let y = (height / vDivs) * i;
+                ctx.moveTo(0, y); ctx.lineTo(width, y);
+            }
+            ctx.stroke();
+        }
+
+        function formatVoltage(v) {
+            if (v >= 1) return v.toFixed(2) + " V";
+            if (v >= 1e-3) return (v * 1e3).toFixed(2) + " mV";
+            if (v >= 1e-6) return (v * 1e6).toFixed(2) + " µV";
+            return (v * 1e9).toFixed(2) + " nV";
+        }
+
+        function drawScope() {
+            if (document.getElementById('view-scope').classList.contains('hidden')) return;
+
+            generateWaveforms();
+
+            const wIn = canvasIn.width;
+            const hIn = canvasIn.height;
+            const wOut = canvasOut.width;
+            const hOut = canvasOut.height;
+
+            drawGraticule(ctxIn, wIn, hIn);
+            drawGraticule(ctxOut, wOut, hOut);
+
+            const numPoints = waveforms.time.length;
+
+            // --- Canal 1 : Courant ---
+            // Échelle: max amplitude * 1.2 pour marge
+            const scaleI = state.amp * 1.5; 
+            document.getElementById('scope-in-scale').textContent = `${(scaleI / 4).toFixed(2)} A / div`;
+
+            ctxIn.beginPath();
+            ctxIn.strokeStyle = '#60a5fa'; // Blue-400
+            ctxIn.lineWidth = 2;
+            ctxIn.lineJoin = 'round';
+
+            for (let i = 0; i < numPoints; i++) {
+                const x = (i / (numPoints - 1)) * wIn;
+                // Centré, Y inversé
+                const y = hIn/2 - (waveforms.current[i] / scaleI) * (hIn/2);
+                if (i === 0) ctxIn.moveTo(x, y);
+                else ctxIn.lineTo(x, y);
+            }
+            ctxIn.stroke();
+
+            // --- Canal 2 : Tension ---
+            // Échelle dynamique basée sur la crête
+            let scaleV = physics.V_peak * 1.5;
+            if (scaleV === 0) scaleV = 1;
+            
+            document.getElementById('scope-out-scale').textContent = `${formatVoltage(scaleV / 4)} / div`;
+
+            ctxOut.beginPath();
+            ctxOut.strokeStyle = '#f87171'; // Red-400
+            ctxOut.lineWidth = 2;
+            ctxOut.lineJoin = 'round';
+
+            for (let i = 0; i < numPoints; i++) {
+                const x = (i / (numPoints - 1)) * wOut;
+                const y = hOut/2 - (waveforms.voltage[i] / scaleV) * (hOut/2);
+                if (i === 0) ctxOut.moveTo(x, y);
+                else ctxOut.lineTo(x, y);
+            }
+            ctxOut.stroke();
+        }
+
+        // ----------------------------------------------------
+        // MOTEUR 3D (THREE.JS)
+        // ----------------------------------------------------
+        let scene, camera, renderer, controls;
+        let wireMesh, coilMesh, fieldParticles;
+        const sceneScale = 100; // 1 unité 3D = 1 cm
+
+        function init3D() {
+            const container = document.getElementById('canvas-3d');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#111827'); // gray-900
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(10, 8, 15);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lumières
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 5);
+            scene.add(dirLight);
+
+            // Grille de repère (PCB base)
+            const gridHelper = new THREE.GridHelper(40, 40, 0x4b5563, 0x374151);
+            gridHelper.position.y = -2; // Légèrement sous le fil
+            scene.add(gridHelper);
+
+            // 1. Fil de cuivre (Ligne d'alimentation sur l'axe X)
+            const wireGeo = new THREE.CylinderGeometry(0.2, 0.2, 30, 32);
+            wireGeo.rotateZ(Math.PI / 2); // Aligner sur l'axe X
+            const wireMat = new THREE.MeshStandardMaterial({ 
+                color: 0xc87137, // Cuivre
+                roughness: 0.3,
+                metalness: 0.8
+            });
+            wireMesh = new THREE.Mesh(wireGeo, wireMat);
+            scene.add(wireMesh);
+
+            // 2. Bobine de détection (Initialement vide, créée dynamiquement)
+            coilMesh = new THREE.Group();
+            scene.add(coilMesh);
+
+            update3DScene();
+        }
+
+        function createCoilGeometry() {
+            // Nettoyer l'ancienne géométrie
+            while(coilMesh.children.length > 0){ 
+                const child = coilMesh.children[0];
+                child.geometry.dispose();
+                child.material.dispose();
+                coilMesh.remove(child); 
+            }
+
+            const s = state.size * sceneScale; // Taille en unités 3D
+            const tubeRadius = 0.3; // Épaisseur visuelle des spires (constante)
+            
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0xfacc15, // Jaune / Or pour l'isolation
+                roughness: 0.5,
+                metalness: 0.5
+            });
+
+            if (state.shape === 'circle') {
+                const geo = new THREE.TorusGeometry(s/2, tubeRadius, 16, 64);
+                // Le Torus est dans le plan XY. On le tourne pour qu'il soit plat (XZ)
+                geo.rotateX(Math.PI / 2);
+                const mesh = new THREE.Mesh(geo, mat);
+                coilMesh.add(mesh);
+            } else {
+                // Carré (utilisant TubeGeometry sur un chemin rectangulaire)
+                class SquareCurve extends THREE.Curve {
+                    constructor(size) {
+                        super();
+                        this.size = size;
+                    }
+                    getPoint(t, optionalTarget = new THREE.Vector3()) {
+                        const s2 = this.size / 2;
+                        // Découpage en 4 segments
+                        if (t < 0.25) {
+                            const p = t / 0.25;
+                            return optionalTarget.set(-s2 + p*this.size, 0, -s2);
+                        } else if (t < 0.5) {
+                            const p = (t - 0.25) / 0.25;
+                            return optionalTarget.set(s2, 0, -s2 + p*this.size);
+                        } else if (t < 0.75) {
+                            const p = (t - 0.5) / 0.25;
+                            return optionalTarget.set(s2 - p*this.size, 0, s2);
+                        } else {
+                            const p = (t - 0.75) / 0.25;
+                            return optionalTarget.set(-s2, 0, s2 - p*this.size);
+                        }
+                    }
+                }
+                const path = new SquareCurve(s);
+                const geo = new THREE.TubeGeometry(path, 64, tubeRadius, 8, true);
+                const mesh = new THREE.Mesh(geo, mat);
+                coilMesh.add(mesh);
+            }
+
+            // Positionnement en Y basé sur la distance
+            coilMesh.position.y = state.distance * sceneScale;
+        }
+
+        function update3DScene() {
+            if (!scene) return;
+            createCoilGeometry();
+        }
+
+        function resize3D() {
+            const container = document.getElementById('canvas-3d');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // ----------------------------------------------------
+        // BOUCLE PRINCIPALE
+        // ----------------------------------------------------
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!state.isPaused) {
+                // Avancer le temps pour l'animation des ondes
+                state.timeOffset += 1e-5; 
+            }
+
+            // Mettre à jour la 3D
+            if (controls) controls.update();
+            if (renderer && !document.getElementById('view-3d').classList.contains('hidden')) {
+                // Petit effet visuel : pulser la couleur du fil selon l'amplitude
+                if (!state.isPaused && wireMesh) {
+                    const modPeriod = 1 / state.fm;
+                    const clock = getClockTrapezoid(state.timeOffset, modPeriod, state.duty, 0.05 * modPeriod);
+                    // Rendre le cuivre plus ou moins brillant
+                    wireMesh.material.emissive.setHex(0xc87137);
+                    wireMesh.material.emissiveIntensity = clock * 0.5;
+                }
+                renderer.render(scene, camera);
+            }
+
+            // Mettre à jour l'oscilloscope
+            drawScope();
+        }
+
+        // Démarrage
+        updateStateFromUI();
+        init3D();
+        resizeCanvases();
+        animate();
+
+    </script>
+</body>
+</html>
